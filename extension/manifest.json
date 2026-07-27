@@ -1,0 +1,70 @@
+{
+  "manifest_version": 3,
+  "name": "SafeClick",
+  "short_name": "SafeClick",
+  "description": "Real-time, explainable phishing and malicious-URL detection. Know why a site is flagged — never a black-box verdict.",
+  "version": "0.1.0",
+
+  "icons": {
+    "16":  "icons/icon16.png",
+    "32":  "icons/icon32.png",
+    "48":  "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+
+  "action": {
+    "default_popup": "popup/popup.html",
+    "default_title": "SafeClick — Check this site",
+    "default_icon": {
+      "16":  "icons/icon16.png",
+      "32":  "icons/icon32.png",
+      "48":  "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  },
+
+  "options_ui": {
+    "page": "options/options.html",
+    "open_in_tab": true
+  },
+
+  "background": {
+    "service_worker": "background/service-worker.js",
+    "type": "module"
+  },
+
+  "content_scripts": [
+    {
+      "matches": ["http://*/*", "https://*/*"],
+      "js": ["content/contentScript.js"],
+      "run_at": "document_idle",
+      "all_frames": false
+    }
+  ],
+
+  "permissions": [
+    "activeTab",
+    "storage",
+    "scripting",
+    "tabs"
+  ],
+
+  "host_permissions": [
+    "http://localhost:8000/*"
+  ],
+
+  "web_accessible_resources": [
+    {
+      "resources": ["icons/*", "assets/*"],
+      "matches": ["<all_urls>"]
+    }
+  ],
+
+  "_comment_permissions": {
+    "activeTab": "Required to read the URL of the currently active tab when the popup is opened.",
+    "storage": "Required for chrome.storage.local (settings persistence) and chrome.storage.session (ephemeral tab verdicts surviving service worker restarts).",
+    "scripting": "Required to programmatically inject the content script if declarative injection fails (defensive fallback).",
+    "tabs": "Required to listen to chrome.tabs.onActivated and onUpdated for URL change detection.",
+    "host_permissions_localhost": "Scoped narrowly to localhost:8000 only — the Phase 2 backend reputation service. Does NOT request <all_urls> host permissions. Will be expanded in Phase 5 to the production API URL only."
+  }
+}
