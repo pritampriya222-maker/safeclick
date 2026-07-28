@@ -180,19 +180,68 @@ Defined in `extension/shared/constants.ts`. All phases must import from here —
 
 ---
 
-## Phase 2 Planned Additions
+---
 
-The following endpoints will be documented here when Phase 2 is implemented:
+## HTTP API Endpoints (Backend)
 
-### `GET /api/v1/reputation?domain={domain}`
+### `GET /api/v1/reputation?domain={domain}` (Phase 2+)
+
+Check domain reputation against VirusTotal (if configured) and OpenPhish community feed with TTL caching.
+
 ```
-Request:  ?domain=example.com
-Response: {
-  domain: string,
-  knownMalicious: boolean,
-  source: string,
-  lastChecked: string,   // ISO 8601
-  confidence: number     // 0–1
+Request:  GET /api/v1/reputation?domain=example.com
+
+Response (200 OK):
+{
+  "domain": "example.com",
+  "known_malicious": false,
+  "source": "virustotal",          // "virustotal" | "openphish" | "unavailable" | "cache"
+  "last_checked": "2026-07-28T14:00:00Z",
+  "confidence": 0.3,
+  "detail": "Domain not found in VirusTotal database."
+}
+```
+
+---
+
+### `POST /api/v1/predict` (Phase 3+)
+
+Run the Phase 3 intelligence pipeline on a URL: 22 feature extraction, declarative rule engine evaluation, XGBoost ML classifier inference, and confidence scoring.
+
+```
+Request:  POST /api/v1/predict
+          Content-Type: application/json
+          { "url": "https://example.com/path" }
+
+Response (200 OK):
+{
+  "ml_score": 0.04,
+  "ml_label": "benign",             // "phishing" | "benign" | null
+  "model_version": "1.0.0",
+  "top_contributing_features": [
+    {
+      "feature_name": "has_https",
+      "label": "Uses HTTPS",
+      "value": 1.0,
+      "contribution": -0.12
+    }
+  ],
+  "source": "model",                 // "model" | "unavailable"
+  "latency_ms": 38.2,
+  "rule_score": 5,
+  "rule_reasons": ["No rule-based threat signals detected."],
+  "rule_engine_version": "1.0.0",
+  "confidence": {
+    "level": "high",                 // "high" | "medium" | "low"
+    "agreement": true,
+    "combined_score": 0.045,
+    "note": "Rule engine and ML model are in strong agreement."
+  },
+  "explanation": {
+    "summary": "This URL appears safe based on rule analysis and ML model.",
+    "rule_reasons": ["No rule-based threat signals detected."],
+    "ml_reasons": ["ML model found no strong phishing features."]
+  }
 }
 ```
 
@@ -203,3 +252,4 @@ Response: {
 - All HTTP API endpoints are versioned under `/api/v1/`.
 - TypeScript interfaces are extended **additively only** — no fields removed or renamed after they appear in a shipped phase.
 - Breaking changes require bumping the API version prefix and updating this document.
+

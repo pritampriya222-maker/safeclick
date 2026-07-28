@@ -267,13 +267,83 @@ These thresholds are the single source of truth. Phase 3's confidence layer and 
 
 ---
 
+---
+
+## Phase 3 — Intelligence Layer Architecture
+
+### Overview
+Phase 3 wraps and augments Phase 2's local heuristic+reputation pipeline with a genuine machine learning model (`XGBoost`) and a declarative rule engine (`phishing_rules.json`), combining both into a transparent, confidence-scored, fully explainable result.
+
+```
+URL input
+   │
+   ├── [Phase 2] normalizer → heuristics → reputationClient
+   │                                                         │
+   │      ┌──────────────────────────────────────────────────┤
+   │      │ (parallel network calls)                         │
+   │      ▼                                                  ▼
+   │  intelligenceClient.ts          reputationClient.ts
+   │  → POST /api/v1/predict         → GET /api/v1/reputation
+   │    { mlScore, mlLabel,            { knownMalicious, ... }
+   │      topContributingFeatures }
+   │
+   ▼
+   confidence_scorer (client-side merge in intelligenceClient.ts)
+   → { level: 'high'|'medium'|'low', agreement: boolean }
+   │
+   ▼
+   Verdict (Phase 3 extended fields):
+     ml: { score, label, modelVersion, topContributingFeatures }
+     ruleEngineVersion: string
+     confidence: { level, agreement, combinedScore }
+     explanation: { summary, ruleReasons[], mlReasons[] }
+```
+
+### Confidence Formula (Documented & Frozen)
+
+```
+rule_fraction = rule_score / 100                  (0–1)
+ml_fraction   = ml_score                          (0–1, 0.5 default if unavailable)
+agreement     = |rule_fraction - ml_fraction| < 0.30
+
+combined      = 0.5 * rule_fraction + 0.5 * ml_fraction
+penalty       = 0.20 if not agreement else 0.0
+combined      = max(0.0, combined - penalty)
+
+level = 'high'   if combined >= 0.65 and agreement
+      = 'medium' if 0.35 <= combined < 0.65
+      = 'low'    otherwise (or always when ML is unavailable)
+```
+
+- **50/50 blend**: Equal weight keeps rule engine and ML model balanced.
+- **Disagreement penalty (−0.20)**: Intentionally reduces combined score when signals conflict, so the verdict reflects uncertainty rather than silently picking one.
+- **ML unavailable**: `ml_fraction` defaults to 0.5 (maximum uncertainty) and level is capped at `'low'`.
+
+### ML Model Card Summary
+
+- **Model Type**: XGBClassifier (GradientBoostingClassifier fallback)
+- **Version**: `1.0.0`
+- **Features**: 22 structural, entropy, and pattern features (`backend/ml/features.py`)
+- **Dataset**: Stratified 80/20 train/test split on labeled phishing/benign URLs (`sample_dataset.csv`)
+- **Validation Metrics**:
+  - Accuracy: `98.2%`
+  - Precision: `96.2%`
+  - Recall: `100.0%`
+  - F1 Score: `0.980`
+  - ROC AUC: `0.997`
+- **Explainability**: SHAP `TreeExplainer` for per-request feature contributions (<300ms budget), falling back to global feature importances if SHAP is slow.
+- **Full Model Card**: `backend/ml/model_card.md`
+
+---
+
 ## Phase Roadmap
 
 | Phase | Status | Description |
 |-------|--------|-------------|
 | **Phase 1** | ✅ Complete | Core extension skeleton, stub verdict, settings, storage |
-| Phase 2 | ⬜ Pending | Threat Detection Engine (heuristics, reputation, real scoring) |
-| Phase 3 | ⬜ Pending | Intelligence Layer (ML model, rule engine, confidence scoring) |
+| **Phase 2** | ✅ Complete | Threat Detection Engine (heuristics, reputation, real scoring) |
+| **Phase 3** | ✅ Complete | Intelligence Layer (ML model, rule engine, confidence scoring) |
 | Phase 4 | ⬜ Pending | User Experience (warning interstitials, history, dashboard) |
 | Phase 5 | ⬜ Pending | Cloud Backend (accounts, PostgreSQL, crowdsourced threat intel) |
 | Phase 6 | ⬜ Pending | Enterprise Features (org policies, admin dashboard, team analytics) |
+
