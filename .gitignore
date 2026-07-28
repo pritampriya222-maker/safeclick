@@ -16,6 +16,12 @@ dist/
 build/
 **/build/
 
+# Python
+__pycache__/
+**/__pycache__/
+*.pyc
+*.pyo
+
 # IDE & OS files
 .DS_Store
 Thumbs.db
