@@ -1,34 +1,34 @@
 /**
  * background/verdictEngine.ts
  * ─────────────────────────────────────────────────────────────────────────────
- * Phase 2: Real threat detection engine.
- * Replaces verdictStub.ts internals while keeping the IDENTICAL function signature:
+ * Phase 3: Intelligence Layer — wraps Phase 2's pipeline with ML + confidence.
  *
+ * Keeps the IDENTICAL function signature:
  *   getVerdict(url: string): Promise<Verdict>
  *
- * Pipeline:
- *   URL → normalizer → heuristics (parallel) → reputation client → phishing detector → risk scorer → Verdict
+ * Phase 3 Pipeline:
+ *   URL → normalizer → heuristics → [reputation + intelligence in parallel]
+ *       → phishing detector → risk scorer → confidence scorer → Verdict
  *
- * Consumers (tabTracker.ts) require ONE import change: verdictStub → verdictEngine.
- * popup/, options/, content/ — ZERO changes required.
- *
- * Phase 1 contract verification:
- * - Verdict.isStub is now false for all real verdicts ✓
- * - Verdict shape is identical to Phase 1 (additive fields only) ✓
+ * Phase 1/2 contract:
+ * - Verdict.isStub = false ✓
+ * - Verdict shape: additive only (all Phase 3 fields optional) ✓
  * - getVerdict() signature unchanged ✓
+ * - popup/, options/, content/ — ZERO changes required ✓
  */
 
 import type { Verdict, PageSignals, HeuristicResult } from '../shared/types';
-import { NON_APPLICABLE_SCHEMES, HEURISTIC_WEIGHTS } from '../shared/constants';
+import { NON_APPLICABLE_SCHEMES } from '../shared/constants';
 import { normalizeUrl } from '../shared/urlNormalizer';
 import { getSettings, isInAllowlist, isInDenylist } from '../shared/storage';
 import { analyzeLengthAndEntropy } from './heuristics/lengthAndEntropy';
 import { analyzeSuspiciousKeywords } from './heuristics/suspiciousKeywords';
 import { analyzeUrlStructure } from './heuristics/urlStructure';
 import { analyzeLoginFormSignal } from './heuristics/loginFormSignal';
-import { checkReputation, getTopDomainsSet, isTopDomain } from './reputationClient';
+import { checkReputation, getTopDomainsSet } from './reputationClient';
 import { analyzePhishingPatterns } from './phishingDetector';
 import { computeScore, buildVerdict } from './riskScorer';
+import { callIntelligence } from './intelligenceClient';
 
 /**
  * Compute a real, explainable Verdict for the given URL.
@@ -102,8 +102,20 @@ export async function getVerdict(
     analyzeLoginFormSignal(normalizedUrl, pageSignals, trustedDomains),
   ];
 
-  // ── 8. Reputation lookup (gracefully degrades) ────────────────────────────
-  const reputation = await checkReputation(normalizedUrl.registeredDomain);
+  // ── 8. Parallel: reputation lookup + intelligence (ML + rule engine) ────────
+  const scorerInputPrep = {
+    url: normalizedUrl.normalized,
+    heuristics,
+    reputation: null as any,
+    phishingPatterns: [] as any[],
+  };
+  // Pre-compute an initial rule score for the intelligence client fallback
+  const preScore = computeScore({ ...scorerInputPrep, reputation: { domain: '', knownMalicious: false, source: 'unavailable' as const, lastChecked: new Date().toISOString(), confidence: 0 } });
+
+  const [reputation, intelligence] = await Promise.all([
+    checkReputation(normalizedUrl.registeredDomain),
+    callIntelligence(url, preScore.score, preScore.reasons),
+  ]);
 
   // ── 9. Phishing pattern analysis ─────────────────────────────────────────
   const phishingPatterns = analyzePhishingPatterns(
@@ -122,8 +134,8 @@ export async function getVerdict(
   };
   const scorerOutput = computeScore(scorerInput);
 
-  // ── 11. Build final Verdict ───────────────────────────────────────────────
-  return buildVerdict(
+  // ── 11. Build Phase 2 Verdict base ───────────────────────────────────────
+  const baseVerdict = buildVerdict(
     normalizedUrl.normalized,
     scorerInput,
     scorerOutput,
@@ -131,6 +143,15 @@ export async function getVerdict(
     reputation,
     phishingPatterns
   );
+
+  // ── 12. Augment with Phase 3 intelligence fields ──────────────────────────
+  return {
+    ...baseVerdict,
+    ml: intelligence.ml,
+    ruleEngineVersion: intelligence.ruleEngineVersion,
+    confidence: intelligence.confidence,
+    explanation: intelligence.explanation,
+  };
 }
 
 // ─── Internal helpers ─────────────────────────────────────────────────────────

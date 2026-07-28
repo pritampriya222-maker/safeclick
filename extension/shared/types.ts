@@ -64,10 +64,80 @@ export interface Verdict {
   /** Phishing detection patterns that fired. Phase 2+. */
   phishingPatterns?: PhishingPattern[];
 
-  // ── Phase 3 extension point (additive, not yet populated) ──────────────────
-  // ml?: MlVerdict;
-  // confidence?: ConfidenceInfo;
-  // explanation?: ExplanationInfo;
+  // ── Phase 3 additions (additive — all optional) ────────────────────────────
+  /** ML model prediction. Phase 3+. */
+  ml?: MlVerdict;
+  /** Version of the server-side rule engine used. Phase 3+. */
+  ruleEngineVersion?: string;
+  /** Confidence in the combined verdict. Phase 3+. */
+  confidence?: ConfidenceInfo;
+  /** Structured plain-English explanation for UI and audit. Phase 3+. */
+  explanation?: ExplanationInfo;
+}
+
+// ─── Phase 3 Types ────────────────────────────────────────────────────────────
+
+/**
+ * A single feature that contributed to the ML model's prediction.
+ * Used to make the ML path explainable (SHAP or global feature importance).
+ */
+export interface FeatureContribution {
+  /** Feature name, e.g. "url_length", "subdomain_entropy". */
+  featureName: string;
+  /** Human-readable label for display. */
+  label: string;
+  /** The feature value for this URL. */
+  value: number;
+  /** Contribution to phishing probability (-1 to +1). Positive = toward phishing. */
+  contribution: number;
+}
+
+/**
+ * ML model prediction result.
+ * Returned by /api/v1/predict and stored in Verdict.ml.
+ */
+export interface MlVerdict {
+  /** Probability 0–1 that this URL is phishing. */
+  score: number | null;
+  /** "phishing" or "benign", null if ML unavailable. */
+  label: 'phishing' | 'benign' | null;
+  /** Semantic version of the model used, e.g. "1.0.0". */
+  modelVersion: string;
+  /** Top feature contributions (sorted by abs contribution descending). */
+  topContributingFeatures: FeatureContribution[];
+  /** Source of the ML result. */
+  source: 'model' | 'unavailable';
+}
+
+/**
+ * Confidence in the combined verdict from rule engine + ML model.
+ * Surfaces agreement/disagreement transparently — never silently picks one.
+ */
+export interface ConfidenceInfo {
+  /** How confident we are in the final verdict. */
+  level: 'high' | 'medium' | 'low';
+  /** True if rule engine and ML model broadly agree (within 0.3 distance). */
+  agreement: boolean;
+  /**
+   * The blended 0–1 score used to determine the final verdict.
+   * formula: 0.5 * (ruleScore/100) + 0.5 * mlScore - disagreementPenalty
+   */
+  combinedScore: number;
+  /** Human-readable note, e.g. "Rule engine and ML model agree this is safe." */
+  note: string;
+}
+
+/**
+ * Structured plain-English explanation of the verdict.
+ * Feeds Phase 4's UI tooltip/panel and is fully auditable.
+ */
+export interface ExplanationInfo {
+  /** One-sentence summary for the popup badge tooltip. */
+  summary: string;
+  /** Reasons from Phase 2/3 rule engine, ordered by weight. */
+  ruleReasons: string[];
+  /** Reasons from ML model, phrased in plain English. */
+  mlReasons: string[];
 }
 
 // ─── Phase 2 Types ────────────────────────────────────────────────────────────
