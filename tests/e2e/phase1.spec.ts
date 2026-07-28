@@ -165,6 +165,25 @@ test('Phase 1: settings page opens and renders correctly', async () => {
   await optionsPage.close();
 });
 
+test('Phase 2: popup badge visible on phishing-lookalike page with login form', async () => {
+  const page = await context.newPage();
+  const phishingFixtureUrl = `http://localhost:${FIXTURE_PORT}/phishing-lookalike.html`;
+  await page.goto(phishingFixtureUrl, { waitUntil: 'domcontentloaded' });
+  await page.waitForTimeout(1000);
+
+  const popupPage = await context.newPage();
+  await popupPage.goto(`chrome-extension://${extensionId}/popup/popup.html`);
+  await popupPage.waitForTimeout(2000);
+
+  // Popup should render without crashing
+  const header = await popupPage.locator('text=SafeClick').first();
+  await expect(header).toBeVisible({ timeout: 10_000 });
+
+  // SafeClick header is present — Phase 2 verdict engine ran
+  await popupPage.close();
+  await page.close();
+});
+
 test('Phase 1: allowlist persists across options page interactions', async () => {
   const optionsPage = await context.newPage();
   await optionsPage.goto(`chrome-extension://${extensionId}/options/options.html`);

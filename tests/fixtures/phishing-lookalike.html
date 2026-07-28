@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>PayPal Secure — Verify Your Account</title>
+  </head>
+  <body>
+    <h1>Verify Your PayPal Account</h1>
+    <p>For your security, please log in to confirm your details.</p>
+
+    <!-- Login form: presence triggers loginFormSignal heuristic -->
+    <form id="phish-form" action="/fake-submit" method="post">
+      <label for="email">Email</label>
+      <input type="email" id="email" name="email" autocomplete="email" />
+
+      <label for="password">Password</label>
+      <input type="password" id="password" name="password" autocomplete="current-password" />
+
+      <button type="submit" id="submit-btn">Log In</button>
+    </form>
+
+    <p id="status">This is a SafeClick E2E test fixture. Not a real website.</p>
+  </body>
+</html>

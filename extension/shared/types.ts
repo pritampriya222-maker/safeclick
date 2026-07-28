@@ -56,10 +56,102 @@ export interface Verdict {
   /** True if this verdict came from the Phase 1 stub, not a real engine. */
   isStub: boolean;
 
+  // ── Phase 2 additions (additive — all optional, Phase 1 consumers unaffected) ─
+  /** Heuristic results that contributed to this verdict. Phase 2+. */
+  heuristics?: HeuristicResult[];
+  /** Reputation lookup result. Phase 2+. */
+  reputation?: ReputationResult;
+  /** Phishing detection patterns that fired. Phase 2+. */
+  phishingPatterns?: PhishingPattern[];
+
   // ── Phase 3 extension point (additive, not yet populated) ──────────────────
   // ml?: MlVerdict;
   // confidence?: ConfidenceInfo;
   // explanation?: ExplanationInfo;
+}
+
+// ─── Phase 2 Types ────────────────────────────────────────────────────────────
+
+/**
+ * Output of the URL normalization step.
+ * Preserved as a structured signal — IDN/punycode flags are evidence of
+ * phishing intent and must NOT be silently stripped.
+ */
+export interface NormalizedUrl {
+  /** The original URL as passed in. */
+  original: string;
+  /** The cleaned, normalized URL string. */
+  normalized: string;
+  /** Extracted hostname (lowercased). */
+  hostname: string;
+  /** Registered domain (eTLD+1), e.g. "example.com" from "sub.example.com". */
+  registeredDomain: string;
+  /** True if the hostname contains non-ASCII characters (Internationalized Domain Name). */
+  isIDN: boolean;
+  /** True if the hostname uses xn-- punycode encoding. */
+  isPunycode: boolean;
+  /** True if the URL contains suspicious percent-encoding patterns. */
+  hasSuspiciousEncoding: boolean;
+  /** True if a non-standard port is used (not 80 for http, not 443 for https). */
+  portIsNonStandard: boolean;
+  /** The URL scheme (lowercased), e.g. "https". */
+  scheme: string;
+  /** The path component of the URL. */
+  path: string;
+  /** Remaining query params after tracking params are stripped. */
+  cleanQuery: string;
+}
+
+/**
+ * Result from a single heuristic analysis module.
+ * Each module is a pure function: (NormalizedUrl, PageSignals | null) → HeuristicResult.
+ */
+export interface HeuristicResult {
+  /** Unique rule identifier, e.g. "heuristic:length_entropy". */
+  ruleId: string;
+  /** Human-readable display name. */
+  name: string;
+  /** Whether this heuristic triggered (fired) for this URL. */
+  triggered: boolean;
+  /**
+   * Raw contribution to the risk score (0–100 scale, per-heuristic maximum).
+   * Only applied to final score if triggered === true.
+   */
+  weight: number;
+  /** One-sentence plain-English explanation of why this heuristic triggered. */
+  explanation: string;
+}
+
+/**
+ * Result of the domain reputation lookup.
+ * The backend returns this; the extension reputationClient.ts wraps it.
+ */
+export interface ReputationResult {
+  domain: string;
+  knownMalicious: boolean;
+  /** Data source that made the determination. */
+  source: 'virustotal' | 'openphish' | 'local_blocklist' | 'top_domain_list' | 'unavailable' | 'cache';
+  /** ISO timestamp of when this was last checked. */
+  lastChecked: string;
+  /** 0–1 confidence score. 0 = unknown/unavailable, 1 = high confidence. */
+  confidence: number;
+  /** Human-readable description of the source finding. */
+  detail?: string;
+}
+
+/**
+ * A specific phishing detection pattern that fired.
+ * Produced by phishingDetector.ts.
+ */
+export interface PhishingPattern {
+  /** Pattern identifier, e.g. "phishing:typosquatting". */
+  patternId: string;
+  /** Human-readable name. */
+  name: string;
+  /** Risk score contribution (0–100). */
+  weight: number;
+  /** Plain-English explanation of what was detected. */
+  explanation: string;
 }
 
 /**

@@ -8,13 +8,13 @@
  * - chrome.storage.session is used to persist state across service worker
  *   restarts (MV3 workers are non-persistent and can be terminated at any time).
  *   storage.session survives worker restarts but is cleared on browser close.
- * - Verdict computation is delegated exclusively to verdictStub.ts (Phase 2
- *   replaces that file's internals without touching this file).
+ * - Verdict computation is delegated exclusively to verdictEngine.ts (Phase 2
+ *   replaced verdictStub.ts internals — this import is the ONLY change needed).
  * - After computing a verdict, we broadcast it to any open popup via messaging.ts.
  */
 
 import type { SiteRecord, PageSignals, Verdict } from '../shared/types';
-import { getVerdict } from './verdictStub';
+import { getVerdict } from './verdictEngine';
 import { broadcastMessage } from '../shared/messaging';
 import { STORAGE_KEYS } from '../shared/constants';
 
