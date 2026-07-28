@@ -27,13 +27,11 @@ reputation_service = ReputationService()
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """FastAPI lifespan context: runs startup and shutdown logic."""
-    # Startup: fetch/cache the OpenPhish community blocklist
-    print("[SafeClick] Starting up — loading reputation data...")
-    await reputation_service.initialize()
-    print("[SafeClick] Reputation service ready.")
-
-    # Inject into app state so routers can access it
-    app.state.reputation_service = reputation_service
+    if not getattr(app.state, "reputation_service", None):
+        print("[SafeClick] Starting up — loading reputation data...")
+        await reputation_service.initialize()
+        app.state.reputation_service = reputation_service
+        print("[SafeClick] Reputation service ready.")
 
     yield
 

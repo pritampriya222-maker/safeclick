@@ -81,7 +81,7 @@ async def get_reputation(
         min_length=1,
         max_length=255,
         description="Registered domain to check (e.g. 'example.com').",
-        example="example.com",
+        examples=["example.com"],
     ),
 ) -> ReputationResponse:
     """Look up domain reputation."""
