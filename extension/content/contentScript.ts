@@ -15,8 +15,23 @@
  * Read-only observation only, in Phase 1.
  */
 
-import { sendMessage } from '../shared/messaging';
-import type { PageSignals, PageSignalsMessage } from '../shared/types';
+import { sendMessage, onMessage } from '../shared/messaging';
+import type { PageSignals, PageSignalsMessage, VerdictUpdateMessage } from '../shared/types';
+import { CursorIndicator } from './cursorIndicator';
+
+// Initialize ambient cursor indicator
+const indicator = new CursorIndicator();
+
+// Listen for VERDICT_UPDATE messages broadcast by tabTracker
+onMessage((message) => {
+  if (message.type === 'VERDICT_UPDATE') {
+    const verdictMsg = message as VerdictUpdateMessage;
+    if (verdictMsg.verdict) {
+      indicator.update(verdictMsg.verdict);
+    }
+  }
+  return false;
+});
 
 // ─── Capture signals ──────────────────────────────────────────────────────────
 
@@ -60,33 +75,21 @@ function capturePageSignals(): PageSignals {
 
 /**
  * Detect whether the page has a login form.
- * A login form is defined as any <form> element that contains at least one
- * <input type="password"> — this is the most reliable signal for phishing
- * credential-harvesting pages.
- *
- * Edge cases handled:
- * - Password inputs outside a <form> element (standalone inputs)
- * - Multiple forms on the same page (e.g., signup + login widgets)
  */
 function detectLoginForm(): boolean {
-  // Check for password inputs inside form elements
   const formsWithPassword = document.querySelectorAll(
     'form input[type="password"]'
   );
   if (formsWithPassword.length > 0) return true;
 
-  // Also check for standalone password inputs (not wrapped in a form tag —
-  // common in SPA login flows that handle submission via JS)
   const allPasswordInputs = document.querySelectorAll('input[type="password"]');
   return allPasswordInputs.length > 0;
 }
 
 // ─── Main execution ───────────────────────────────────────────────────────────
 
-// Run after the DOM is ready.
 if (document.readyState === 'loading') {
   document.addEventListener('DOMContentLoaded', captureAndSendSignals);
 } else {
-  // DOM already loaded (script injected late).
   captureAndSendSignals();
 }

@@ -77,6 +77,8 @@ export default defineConfig({
       input: {
         popup: resolve(__dirname, 'popup/popup.html'),
         options: resolve(__dirname, 'options/options.html'),
+        warning: resolve(__dirname, 'warning/warning.html'),
+        dashboard: resolve(__dirname, 'dashboard/dashboard.html'),
         background: resolve(__dirname, 'background/service-worker.ts'),
         content: resolve(__dirname, 'content/contentScript.ts'),
       },

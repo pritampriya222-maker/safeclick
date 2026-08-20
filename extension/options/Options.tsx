@@ -102,8 +102,19 @@ export const Options: React.FC = () => {
           <h1 className="text-lg font-bold text-white">SafeClick Settings</h1>
           <p className="text-xs text-slate-500">Configure your browser protection</p>
         </div>
-        {/* Save indicator */}
-        <div className="ml-auto">
+        {/* Save indicator & Dashboard Link */}
+        <div className="ml-auto flex items-center space-x-4">
+          <button
+            onClick={() => {
+              if (typeof chrome !== 'undefined' && chrome.tabs?.create) {
+                chrome.tabs.create({ url: chrome.runtime.getURL('dashboard/dashboard.html') });
+              }
+            }}
+            className="px-3 py-1.5 rounded-lg bg-indigo-600/20 hover:bg-indigo-600/30 border border-indigo-500/40 text-indigo-300 text-xs font-semibold transition-colors flex items-center space-x-1.5"
+          >
+            <span>View Dashboard</span>
+          </button>
+
           {saveState === 'saving' && (
             <span className="text-xs text-slate-500 animate-pulse">Saving…</span>
           )}

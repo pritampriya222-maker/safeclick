@@ -15,7 +15,7 @@ import { SiteInfoCard } from './components/SiteInfoCard';
 import { QuickActions } from './components/QuickActions';
 import { sendMessage } from '../shared/messaging';
 import type { Verdict } from '../shared/types';
-import { NON_APPLICABLE_SCHEMES } from '../shared/constants';
+import { NON_APPLICABLE_SCHEMES, EXTENSION_VERSION } from '../shared/constants';
 
 type PopupState = 'loading' | 'verdict' | 'error' | 'not_applicable';
 
@@ -203,9 +203,22 @@ export const Popup: React.FC = () => {
       </main>
 
       {/* Footer */}
-      <footer className="px-4 py-2 border-t border-slate-800/60 text-center">
-        <p className="text-slate-700 text-[10px]">
-          SafeClick — Real-Time Browser Threat Detection
+      <footer className="px-4 py-2 border-t border-slate-800/60 flex items-center justify-between">
+        <button
+          onClick={() => {
+            if (typeof chrome !== 'undefined' && chrome.tabs?.create) {
+              chrome.tabs.create({ url: chrome.runtime.getURL('dashboard/dashboard.html') });
+            }
+          }}
+          className="text-indigo-400 hover:text-indigo-300 text-[11px] font-medium flex items-center space-x-1 transition-colors"
+        >
+          <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+          </svg>
+          <span>View Dashboard</span>
+        </button>
+        <p className="text-slate-600 text-[10px]">
+          v{EXTENSION_VERSION}
         </p>
       </footer>
     </div>

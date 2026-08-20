@@ -17,6 +17,8 @@ import type { SiteRecord, PageSignals, Verdict } from '../shared/types';
 import { getVerdict } from './verdictEngine';
 import { broadcastMessage } from '../shared/messaging';
 import { STORAGE_KEYS } from '../shared/constants';
+import { addHistoryEntry } from '../shared/historyStore';
+import { isDomainBypassed, buildWarningUrl } from './warningManager';
 
 // ─── In-memory state ──────────────────────────────────────────────────────────
 
@@ -101,13 +103,38 @@ export async function handleTabUrl(tabId: number, url: string): Promise<void> {
   tabRecords.set(tabId, record);
   await persistTabRecord(record);
 
-  // Compute verdict asynchronously (verdictStub.ts in Phase 1, real engine in Phase 2+).
+  // Compute verdict asynchronously (verdictEngine in Phase 2+).
   try {
     const verdict = await getVerdict(url);
     record.verdict = verdict;
     record.lastChecked = new Date().toISOString();
     tabRecords.set(tabId, record);
     await persistTabRecord(record);
+
+    // Phase 4: Log to local safe-browsing history store (size-capped at 500)
+    addHistoryEntry({
+      url: verdict.url,
+      domain: extractDomain(verdict.url),
+      level: verdict.level,
+      score: verdict.score,
+      summary: verdict.explanation?.summary || verdict.reasons[0] || 'Page checked',
+      timestamp: verdict.timestamp,
+    }).catch((err) => console.error('[SafeClick] History log failed:', err));
+
+    // Phase 4: Warning Interstitial Interception for "Dangerous" verdicts
+    if (verdict.level === 'dangerous') {
+      const domain = extractDomain(verdict.url);
+      const isBypassed = await isDomainBypassed(domain);
+
+      // Only redirect if not already on the warning page itself and not bypassed by user
+      if (!isBypassed && !url.includes('/warning/warning.html')) {
+        const warningUrl = buildWarningUrl(url, verdict);
+        console.warn(`[SafeClick] Intercepting dangerous site: ${url} -> ${warningUrl}`);
+        if (typeof chrome !== 'undefined' && chrome.tabs?.update) {
+          await chrome.tabs.update(tabId, { url: warningUrl });
+        }
+      }
+    }
 
     // Broadcast to any open popup so it can update without polling.
     await broadcastMessage({
@@ -117,6 +144,15 @@ export async function handleTabUrl(tabId: number, url: string): Promise<void> {
     });
   } catch (err) {
     console.error(`[SafeClick] getVerdict failed for ${url}:`, err);
+  }
+}
+
+function extractDomain(url: string): string {
+  try {
+    const parsed = new URL(url);
+    return parsed.hostname.replace(/^www\./, '').toLowerCase();
+  } catch {
+    return url;
   }
 }
 

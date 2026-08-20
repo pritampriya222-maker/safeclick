@@ -4,9 +4,41 @@ All notable changes to SafeClick are documented in this file.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 Versioning follows [Semantic Versioning](https://semver.org/).
 
+## [0.4.0] — Phase 4: User Experience
+
+### Added
+
+**Ambient Risk Indicator Dot**
+- `extension/content/cursorIndicator.ts` — top-right glassmorphic corner indicator dot injected into pages (green/amber/red color shift), hover tooltip showing risk reasons and score, zero input lag, toggleable via `settings.cursorIndicatorEnabled`
+
+**Warning Interstitial Page**
+- `extension/warning/warning.html` + `WarningPage.tsx` — full-page warning interstitial for sites crossing the `dangerous` threshold (score ≥ 70 or known malicious)
+- Displays plain-English summary, top 2–3 threat reasons, confidence level badge, and 3 clear actions: "Go back to safety", "Proceed anyway" (modal with explicit confirmation step), and "Report a mistake"
+- `extension/background/warningManager.ts` — temporary 1-hour session bypass store in `chrome.storage.session` when user confirms "Proceed anyway"
+
+**Local Safe Browsing History Store**
+- `extension/shared/historyStore.ts` — size-capped local security log in `chrome.storage.local` (max 500 entries, FIFO eviction)
+- Fully respects user privacy settings (`historyLoggingEnabled`), with 1-click "Clear History" and stat calculation helpers
+
+**Security Dashboard & Analytics**
+- `extension/dashboard/dashboard.html` + `Dashboard.tsx` — full extension page accessible from Popup and Options
+- Summary stat cards: Sites Checked (Today / This Week / All-time), Dangerous Blocked, Suspicious Flagged, Safe Sites
+- 30-day SVG activity trend chart
+- Top Flagged Domains ranking list
+- `HistoryView.tsx` — filterable (by verdict level) and searchable (by domain/URL) history table
+
+**Multi-Page Vite Build & Extension Wiring**
+- `extension/vite.config.ts` — updated rollup input with multi-page entries: `popup`, `options`, `warning`, `dashboard`
+- `extension/popup/Popup.tsx` & `extension/options/Options.tsx` — added "View Dashboard" button links
+
+**Testing & Documentation**
+- `extension/tests/historyStore.test.ts` — Vitest unit tests (133 total passing Vitest tests)
+- `tests/e2e/phase4.spec.ts` — Playwright E2E test suite for warning interstitial UI, proceed modal, and security dashboard
+- `docs/architecture.md` — threshold-to-UX mapping table, warning interception mechanism, history/dashboard data flow
+
 ---
 
-## [0.2.0] — Phase 2: Threat Detection Engine
+## [0.3.0] — Phase 3: Intelligence Layer
 
 ### Added
 

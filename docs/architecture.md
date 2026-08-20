@@ -336,6 +336,35 @@ level = 'high'   if combined >= 0.65 and agreement
 
 ---
 
+## Phase 4 — User Experience Architecture
+
+### Threshold-to-UX Mapping
+
+| Verdict Level | Risk Score Range | UX Behavior & Presentation |
+|---------------|------------------|----------------------------|
+| **Safe** | 0–29 | Green badge, green ambient corner indicator dot, silent |
+| **Suspicious** | 30–69 | Amber badge, amber glowing corner indicator dot + hover tooltip, no navigation blocking (prevents alert fatigue) |
+| **Dangerous** | 70–100 | Red badge, pulsing red corner dot, **full-page warning interstitial redirect** (`warning.html`) |
+
+### Warning Interstitial & Navigation Interception
+
+- **Mechanism**: `tabTracker.ts` inspects computed verdicts. If `level === 'dangerous'`, it checks if the domain is present in the active 1-hour session bypass list (`warningManager.ts`). If not bypassed, it calls `chrome.tabs.update(tabId, { url: warningUrl })`.
+- **Actions**:
+  1. **Go Back to Safety**: Navigates tab back or to `https://google.com`.
+  2. **Proceed Anyway**: Opens an explicit confirmation modal explaining the risks. Upon user confirmation, grants a 1-hour session bypass in `chrome.storage.session` and navigates to the target URL.
+  3. **Report a Mistake**: Logs a local false-positive feedback record.
+
+### Local History & Dashboard Data Flow
+
+- **History Store (`historyStore.ts`)**: Automatically logs all analyzed verdicts to `chrome.storage.local`. Enforces a strict **500-entry cap (FIFO eviction)** to prevent storage bloat. Fully respects `settings.historyLoggingEnabled`.
+- **Dashboard (`dashboard.html`)**: Rich React page computing client-side stats:
+  - Summary cards (Today / This week / All-time)
+  - 30-day SVG activity trend chart
+  - Top flagged domains list
+  - Filterable, searchable `HistoryView.tsx` table with 1-click history clearing.
+
+---
+
 ## Phase Roadmap
 
 | Phase | Status | Description |
@@ -343,7 +372,8 @@ level = 'high'   if combined >= 0.65 and agreement
 | **Phase 1** | ✅ Complete | Core extension skeleton, stub verdict, settings, storage |
 | **Phase 2** | ✅ Complete | Threat Detection Engine (heuristics, reputation, real scoring) |
 | **Phase 3** | ✅ Complete | Intelligence Layer (ML model, rule engine, confidence scoring) |
-| Phase 4 | ⬜ Pending | User Experience (warning interstitials, history, dashboard) |
+| **Phase 4** | ✅ Complete | User Experience (warning interstitials, history, dashboard) |
 | Phase 5 | ⬜ Pending | Cloud Backend (accounts, PostgreSQL, crowdsourced threat intel) |
 | Phase 6 | ⬜ Pending | Enterprise Features (org policies, admin dashboard, team analytics) |
+
 
