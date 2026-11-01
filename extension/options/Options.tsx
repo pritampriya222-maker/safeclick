@@ -6,14 +6,15 @@
  * - Notification preference selector
  * - Allowlist / Denylist domain editor
  * - Cursor indicator toggle (Phase 4 feature, declared in Phase 1 schema)
- * - "Share anonymized data" placeholder (greyed out, Phase 5 not yet implemented)
  * - History logging toggle (Phase 4 feature)
+ * - Cloud Account section — optional, Phase 5
  */
 
 import React, { useEffect, useState, useCallback } from 'react';
 import { sendMessage } from '../shared/messaging';
 import type { Settings } from '../shared/types';
 import { DEFAULT_SETTINGS } from '../shared/constants';
+import { AccountSection } from './AccountSection';
 
 type SaveState = 'idle' | 'saving' | 'saved' | 'error';
 
@@ -247,27 +248,10 @@ export const Options: React.FC = () => {
           </div>
         )}
 
-        {/* ── Cloud Sync (Phase 5 placeholder) ─────────────────────── */}
-        <Section title="Cloud &amp; Privacy" icon="☁">
-          <div className="flex items-start gap-3 p-3 rounded-lg border border-slate-700/40 bg-slate-800/20 opacity-60">
-            <input
-              id="toggle-share-data"
-              type="checkbox"
-              checked={false}
-              disabled
-              className="mt-1 accent-indigo-500 flex-shrink-0"
-            />
-            <div>
-              <label htmlFor="toggle-share-data" className="text-sm font-medium text-slate-400 cursor-not-allowed">
-                Share anonymized threat data
-              </label>
-              <p className="text-xs text-slate-600 mt-0.5">
-                Available in a future update (Phase 5 — Cloud Sync).
-              </p>
-            </div>
-          </div>
-        </Section>
+        {/* ── Cloud Account (Phase 5) ────────────────────────────────── */}
+        <AccountSection />
       </main>
+
     </div>
   );
 };
@@ -397,3 +381,4 @@ const DomainListEditor: React.FC<{
 );
 
 export default Options;
+

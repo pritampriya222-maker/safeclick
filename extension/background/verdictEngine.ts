@@ -25,6 +25,7 @@ import { analyzeLengthAndEntropy } from './heuristics/lengthAndEntropy';
 import { analyzeSuspiciousKeywords } from './heuristics/suspiciousKeywords';
 import { analyzeUrlStructure } from './heuristics/urlStructure';
 import { analyzeLoginFormSignal } from './heuristics/loginFormSignal';
+import { analyzeSuspiciousDownloads } from './heuristics/suspiciousDownloads';
 import { checkReputation, getTopDomainsSet } from './reputationClient';
 import { analyzePhishingPatterns } from './phishingDetector';
 import { computeScore, buildVerdict } from './riskScorer';
@@ -100,6 +101,7 @@ export async function getVerdict(
     analyzeSuspiciousKeywords(normalizedUrl, pageSignals),
     analyzeUrlStructure(normalizedUrl, pageSignals),
     analyzeLoginFormSignal(normalizedUrl, pageSignals, trustedDomains),
+    analyzeSuspiciousDownloads(normalizedUrl, pageSignals),
   ];
 
   // ── 8. Parallel: reputation lookup + intelligence (ML + rule engine) ────────

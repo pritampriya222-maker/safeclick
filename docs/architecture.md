@@ -365,15 +365,112 @@ level = 'high'   if combined >= 0.65 and agreement
 
 ---
 
+## Phase 5 — Cloud Backend Architecture
+
+### Overview
+
+Phase 5 turns SafeClick into a connected platform with **opt-in accounts, PostgreSQL persistent storage, and crowdsourced threat intelligence**. Crucially, every Phase 1–4 feature **remains fully functional without an account**.
+
+### Account vs. No-Account Capabilities
+
+| Capability | Without Account (Local-First) | With Free Account (Cloud-Enabled) |
+|---|---|---|
+| Heuristics & ML Scoring | ✅ Full local scoring | ✅ Full local scoring |
+| OpenPhish & VirusTotal Reputation | ✅ Direct lookup | ✅ Direct lookup |
+| Crowdsourced Shared Threat Intel | ✅ Read-only query | ✅ Read-only query + Report submission |
+| Ambient Risk Dot & Warnings | ✅ Full UX | ✅ Full UX |
+| Safe Browsing History | ✅ Local (500 entries) | ✅ Local + Optional Cloud Sync (explicit opt-in) |
+| Settings & Allowlist | ✅ Local only | ✅ Synced across signed-in devices |
+| Phishing / FP Submissions | ⚠️ Anonymous only | ✅ Linked to account (higher weight in aggregation) |
+
+---
+
+### Authentication Flow & Token Design
+
+```
+Extension (Options UI)                    FastAPI (/api/v1/auth)             PostgreSQL
+       │                                            │                             │
+       │─── POST /login (email, password) ─────────▶│                             │
+       │                                            │─── bcrypt.checkpw() ───────▶│ (verify user)
+       │                                            │─── create Device record ───▶│ (store hash(refresh))
+       │◀── { access_token, refresh_token } ────────│                             │
+       │                                            │                             │
+       │  [Store in chrome.storage.local]          │                             │
+       │                                            │                             │
+       │─── Periodic: POST /refresh ───────────────▶│                             │
+       │    { refresh_token }                       │─── Validate & rotate ──────▶│ (update device hash)
+       │◀── { new_access_token, new_refresh_token } ─│                             │
+```
+
+#### Token Storage Tradeoff (Documented Design Decision)
+
+> **Architectural Tradeoff**: Chrome Manifest V3 service workers run without an HTTP cookie jar context, making standard `httpOnly` cookies unusable for background extension requests.
+> 
+> **Implementation**: Access and refresh tokens are stored in `chrome.storage.local`.
+> 
+> **Security Mitigations**:
+> 1. Short-lived Access Tokens: 15-minute expiration (`ACCESS_TOKEN_EXPIRE_MINUTES`).
+> 2. Rotated Refresh Tokens: Refresh tokens are single-use; the database stores only a SHA-256 hash of the refresh token.
+> 3. Origin Isolation: The extension runs under a dedicated `chrome-extension://<id>` scheme, inaccessible from web pages or external scripts.
+
+---
+
+### Crowdsourced Threat Intelligence Promotion Pipeline
+
+```
+[User Report Submissions]
+          │
+          ▼
+┌───────────────────────────┐
+│   `reported_sites` table  │  (Status: pending, stores engine_score at submission)
+└─────────────┬─────────────┘
+              │
+              ▼
+┌───────────────────────────┐
+│ Threat Intel Aggregator   │  (Background task runs every 1 hour)
+│ - MIN_REPORTS >= 3        │
+│ - MIN_ENGINE_SCORE >= 60  │  <-- Anti-abuse corroboration check
+└─────────────┬─────────────┘
+              │ (Promoted)
+              ▼
+┌───────────────────────────┐
+│ `shared_threat_intel` tbl │
+└─────────────┬─────────────┘
+              │
+              ▼
+┌───────────────────────────┐
+│ GET /threat-intel/lookup  │  <-- Queried by all extensions (open endpoint)
+└───────────────────────────┘
+```
+
+#### Anti-Abuse Rationale
+A domain is promoted from `reported_sites` to `shared_threat_intel` only when **both conditions** are met:
+1. **≥ 3 independent user reports** (distinct users or anonymous submissions).
+2. **Average Phase 2/3 engine score ≥ 60** at the time of report submission.
+
+This dual-gate prevents malicious actors from flood-reporting innocent domains (e.g., competitors or major utilities) to trigger false blacklisting.
+
+---
+
+### Data Retention & Privacy Policy
+
+- **`reported_sites`**: Retained for 90 days after resolution (confirmed/rejected). Anonymous unconfirmed reports purged after 30 days.
+- **`analytics_events`**: Retained for 365 days. **Zero full URLs stored server-side** (only SHA-256 domain hashes and aggregate verdict counters).
+- **`shared_threat_intel`**: Retained indefinitely until manually revoked or aged out.
+- **Browsing History**: Stored strictly client-side on the user's device (`chrome.storage.local`, 500-entry max). Never uploaded to cloud backend unless the user explicitly activates the separate, off-by-default "Sync browsing history" toggle.
+
+---
+
 ## Phase Roadmap
 
 | Phase | Status | Description |
-|-------|--------|-------------|
+|---|---|---|
 | **Phase 1** | ✅ Complete | Core extension skeleton, stub verdict, settings, storage |
 | **Phase 2** | ✅ Complete | Threat Detection Engine (heuristics, reputation, real scoring) |
 | **Phase 3** | ✅ Complete | Intelligence Layer (ML model, rule engine, confidence scoring) |
 | **Phase 4** | ✅ Complete | User Experience (warning interstitials, history, dashboard) |
-| Phase 5 | ⬜ Pending | Cloud Backend (accounts, PostgreSQL, crowdsourced threat intel) |
+| **Phase 5** | ✅ Complete | Cloud Backend (PostgreSQL, JWT auth, crowdsourced threat intel) |
 | Phase 6 | ⬜ Pending | Enterprise Features (org policies, admin dashboard, team analytics) |
+
 
 

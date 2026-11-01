@@ -4,6 +4,8 @@ export default {
     './popup/**/*.{ts,tsx,html}',
     './options/**/*.{ts,tsx,html}',
     './shared/**/*.{ts,tsx}',
+    './dashboard/**/*.{ts,tsx,html}',
+    './warning/**/*.{ts,tsx,html}',
   ],
   theme: {
     extend: {

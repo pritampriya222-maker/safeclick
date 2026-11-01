@@ -4,6 +4,45 @@ All notable changes to SafeClick are documented in this file.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 Versioning follows [Semantic Versioning](https://semver.org/).
 
+## [0.5.0] — Phase 5: Cloud Backend
+
+### Added
+
+**Database & Persistence Layer**
+- `backend/database/models.py` — SQLAlchemy async ORM models: `User`, `Device`, `ReportedSite`, `SharedThreatIntel`, `AnalyticsEvent`
+- `backend/database/db.py` — async session factory via `asyncpg` with graceful offline fallback when `DATABASE_URL` is unset
+- `backend/database/migrations/` — Alembic migrations environment and initial schema migration (`0001_initial.py`)
+- Explicit data retention policy: 90 days for reported sites, 365 days for anonymized analytics, client-side history by default
+
+**Authentication & Token Management**
+- `backend/services/auth_service.py` — bcrypt password hashing, 15-minute JWT access tokens, 7-day rotated refresh tokens
+- `backend/api/auth.py` — `/register`, `/login`, `/refresh`, `/logout`, `/me` endpoints with token rotation and rate limiting
+- Documented tradeoff: tokens stored in extension's `chrome.storage.local` with short TTL and server-side hashed refresh tokens
+
+**Crowdsourced Threat Intelligence Pipeline**
+- `backend/services/threat_intel_aggregator.py` — scheduled async background aggregation loop with anti-abuse promotion threshold (≥3 reports + engine score ≥60)
+- `backend/api/reports.py` — rate-limited report submission (10/hr/IP) and user report history endpoints
+- `backend/api/threat_intel.py` — open `/threat-intel/lookup` endpoint returning crowdsourced malicious verdicts with provenance labels
+- `extension/background/reputationClient.ts` — parallel crowd threat query merged with automated reputation and clearly labeled in explanation ("Flagged by N SafeClick users")
+
+**Privacy-Preserving Telemetry**
+- `backend/services/analytics_service.py` & `backend/api/analytics.py` — aggregate-only operational telemetry (domain hash only, no full URLs, no per-user tracking)
+
+**Extension Auth & Settings Integration**
+- `extension/shared/authClient.ts` — client auth manager with token rotation, storage listeners, and report submission
+- `extension/options/AccountSection.tsx` — optional sign-in/register section in Options with explicit distinction between settings sync and history sync
+- Zero auth dependency: all Phase 1–4 features verified to function seamlessly without an account
+
+**Containerization & Deployment**
+- `docker-compose.yml` — one-command dev environment with FastAPI, PostgreSQL 16, and optional Redis profile
+- `backend/Dockerfile` — container definition for backend service
+
+**Testing**
+- `backend/tests/test_auth.py`, `test_reports.py`, `test_threat_intel.py` — 118 passing Pytest tests
+- `extension/tests/authClient.test.ts` — 141 passing Vitest tests (including local-first zero-auth verification)
+
+---
+
 ## [0.4.0] — Phase 4: User Experience
 
 ### Added

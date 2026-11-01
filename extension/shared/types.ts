@@ -200,7 +200,7 @@ export interface ReputationResult {
   domain: string;
   knownMalicious: boolean;
   /** Data source that made the determination. */
-  source: 'virustotal' | 'openphish' | 'local_blocklist' | 'top_domain_list' | 'unavailable' | 'cache';
+  source: 'virustotal' | 'openphish' | 'local_blocklist' | 'top_domain_list' | 'unavailable' | 'cache' | 'crowd_sourced';
   /** ISO timestamp of when this was last checked. */
   lastChecked: string;
   /** 0–1 confidence score. 0 = unknown/unavailable, 1 = high confidence. */
@@ -348,7 +348,8 @@ export type MessageType =
   | 'TRUST_DOMAIN'
   | 'GET_SETTINGS'
   | 'SET_SETTINGS'
-  | 'OPEN_OPTIONS';
+  | 'OPEN_OPTIONS'
+  | 'CHECK_LINK';
 
 export interface BaseMessage {
   type: MessageType;
@@ -356,7 +357,13 @@ export interface BaseMessage {
 
 export interface GetVerdictMessage extends BaseMessage {
   type: 'GET_VERDICT';
-  tabId: number;
+  tabId?: number;
+  url?: string;
+}
+
+export interface CheckLinkMessage extends BaseMessage {
+  type: 'CHECK_LINK';
+  url: string;
 }
 
 export interface VerdictUpdateMessage extends BaseMessage {
@@ -396,6 +403,7 @@ export interface OpenOptionsMessage extends BaseMessage {
 
 export type ExtensionMessage =
   | GetVerdictMessage
+  | CheckLinkMessage
   | VerdictUpdateMessage
   | PageSignalsMessage
   | ReportSiteMessage

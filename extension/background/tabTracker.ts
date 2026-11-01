@@ -15,7 +15,7 @@
 
 import type { SiteRecord, PageSignals, Verdict } from '../shared/types';
 import { getVerdict } from './verdictEngine';
-import { broadcastMessage } from '../shared/messaging';
+import { broadcastMessage, sendMessageToTab } from '../shared/messaging';
 import { STORAGE_KEYS } from '../shared/constants';
 import { addHistoryEntry } from '../shared/historyStore';
 import { isDomainBypassed, buildWarningUrl } from './warningManager';
@@ -135,6 +135,13 @@ export async function handleTabUrl(tabId: number, url: string): Promise<void> {
         }
       }
     }
+
+    // Push directly to the tab's content script for the ambient indicator & cursor
+    sendMessageToTab(tabId, {
+      type: 'VERDICT_UPDATE',
+      tabId,
+      verdict,
+    }).catch(() => {});
 
     // Broadcast to any open popup so it can update without polling.
     await broadcastMessage({

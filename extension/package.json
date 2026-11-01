@@ -6,7 +6,7 @@
   "description": "SafeClick — Real-Time, Explainable Browser Threat Detection",
   "scripts": {
     "dev": "vite build --watch",
-    "build": "vite build",
+    "build": "vite build && vite build --config vite.content.config.ts",
     "preview": "echo 'Load extension/dist as unpacked extension in Chrome'",
     "test": "vitest run",
     "test:watch": "vitest",

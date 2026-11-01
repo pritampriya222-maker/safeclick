@@ -266,3 +266,29 @@ describe('analyzeLoginFormSignal()', () => {
     expect(result.ruleId).toBe('heuristic:login_form_signal');
   });
 });
+
+// ─── suspiciousDownloads ──────────────────────────────────────────────────────
+
+import { analyzeSuspiciousDownloads } from '../background/heuristics/suspiciousDownloads';
+
+describe('suspiciousDownloads — analyzeSuspiciousDownloads()', () => {
+  it('does NOT trigger for safe normal domain', () => {
+    const result = analyzeSuspiciousDownloads(makeNormalizedUrl('https://github.com/project/releases'), null);
+    expect(result.triggered).toBe(false);
+  });
+
+  it('triggers for shady streaming keyword (123movies / fmovies / soap2day)', () => {
+    const result = analyzeSuspiciousDownloads(makeNormalizedUrl('https://123movies-online.to/watch-avatar'), null);
+    expect(result.triggered).toBe(true);
+    expect(result.weight).toBeGreaterThanOrEqual(35);
+    expect(result.explanation).toMatch(/streaming/i);
+  });
+
+  it('triggers for cracked software / repack keywords', () => {
+    const result = analyzeSuspiciousDownloads(makeNormalizedUrl('https://steamunlocked-games.xyz/download-gta'), null);
+    expect(result.triggered).toBe(true);
+    expect(result.weight).toBeGreaterThanOrEqual(45);
+    expect(result.explanation).toMatch(/software/i);
+  });
+});
+

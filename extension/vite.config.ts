@@ -72,6 +72,7 @@ export default defineConfig({
   build: {
     outDir: 'dist',
     emptyOutDir: true,
+    modulePreload: false,
     sourcemap: process.env.NODE_ENV === 'development',
     rollupOptions: {
       input: {
@@ -80,13 +81,11 @@ export default defineConfig({
         warning: resolve(__dirname, 'warning/warning.html'),
         dashboard: resolve(__dirname, 'dashboard/dashboard.html'),
         background: resolve(__dirname, 'background/service-worker.ts'),
-        content: resolve(__dirname, 'content/contentScript.ts'),
       },
       output: {
         // Place background service worker at a predictable path matching manifest.json
         entryFileNames: (chunk) => {
           if (chunk.name === 'background') return 'background/service-worker.js';
-          if (chunk.name === 'content') return 'content/contentScript.js';
           return 'assets/[name]-[hash].js';
         },
         chunkFileNames: 'assets/[name]-[hash].js',

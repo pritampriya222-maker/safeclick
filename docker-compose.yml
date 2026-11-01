@@ -1,0 +1,84 @@
+version: "3.9"
+
+# SafeClick — Local Development Stack
+# ─────────────────────────────────────────────────────────────────────────────
+# Usage:
+#   docker-compose up                     # backend + PostgreSQL (minimal)
+#   docker-compose --profile redis up     # also starts Redis for distributed caching
+#
+# One-command spin-up for full Phase 5 local dev environment.
+#
+# Production Deployment Note (honest):
+#   This compose stack is suitable for local dev and staging.
+#   For production on a free/low-cost VPS:
+#     - Render.com free tier: 512MB RAM, spins down after 15min inactivity (cold start ~30s)
+#     - Supabase free tier: PostgreSQL with 500MB storage, limited connections
+#     - Railway.app: $5/mo credit, more reliable than free Render
+#     - Fly.io: free tier works, requires credit card
+#   These are real limits — do not assume infinite free capacity.
+#   SSL termination (nginx/caddy) is required before exposing to the internet.
+
+services:
+  # ── PostgreSQL ────────────────────────────────────────────────────────────────
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: safeclick
+      POSTGRES_PASSWORD: safeclick
+      POSTGRES_DB: safeclick
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U safeclick -d safeclick"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── FastAPI Backend ───────────────────────────────────────────────────────────
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql+asyncpg://safeclick:safeclick@db:5432/safeclick
+      JWT_SECRET: ${JWT_SECRET:-INSECURE_CHANGE_ME_IN_PRODUCTION}
+      JWT_ALGORITHM: HS256
+      JWT_ACCESS_TOKEN_EXPIRE_MINUTES: 15
+      JWT_REFRESH_TOKEN_EXPIRE_DAYS: 7
+      REDIS_URL: ${REDIS_URL:-}
+      VIRUSTOTAL_API_KEY: ${VIRUSTOTAL_API_KEY:-}
+      AGGREGATION_MIN_REPORTS: 3
+      AGGREGATION_MIN_ENGINE_SCORE: 60
+      AGGREGATION_INTERVAL_SECONDS: 3600
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./backend:/app
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8000/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # ── Redis (optional profile) ──────────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    profiles: ["redis"]
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  pgdata:

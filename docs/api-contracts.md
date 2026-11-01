@@ -247,9 +247,231 @@ Response (200 OK):
 
 ---
 
+## Phase 5 — Cloud Backend Contracts
+
+### Authentication Endpoints
+
+#### `POST /api/v1/auth/register`
+Create a new account. Returns access and refresh tokens.
+
+```http
+POST /api/v1/auth/register
+Content-Type: application/json
+
+{
+  "email": "user@example.com",
+  "password": "Password123!"
+}
+```
+
+```json
+// Response: 201 Created
+{
+  "access_token": "eyJhbGciOi...",
+  "refresh_token": "eyJhbGciOi...",
+  "token_type": "bearer",
+  "user_id": "9b1deb4d-3b7d-4bad-9bdd-2b0d7b3dcb6d",
+  "email": "user@example.com"
+}
+```
+
+#### `POST /api/v1/auth/login`
+Authenticate with email and password.
+
+```http
+POST /api/v1/auth/login
+Content-Type: application/json
+
+{
+  "email": "user@example.com",
+  "password": "Password123!"
+}
+```
+
+```json
+// Response: 200 OK
+{
+  "access_token": "eyJhbGciOi...",
+  "refresh_token": "eyJhbGciOi...",
+  "token_type": "bearer",
+  "user_id": "9b1deb4d-3b7d-4bad-9bdd-2b0d7b3dcb6d",
+  "email": "user@example.com"
+}
+```
+
+#### `POST /api/v1/auth/refresh`
+Exchange a refresh token for a new access token and rotated refresh token.
+
+```http
+POST /api/v1/auth/refresh
+Content-Type: application/json
+
+{
+  "refresh_token": "eyJhbGciOi..."
+}
+```
+
+```json
+// Response: 200 OK
+{
+  "access_token": "eyJhbGciOi...new",
+  "refresh_token": "eyJhbGciOi...new",
+  "token_type": "bearer",
+  "user_id": "9b1deb4d-3b7d-4bad-9bdd-2b0d7b3dcb6d",
+  "email": "user@example.com"
+}
+```
+
+#### `POST /api/v1/auth/logout`
+Invalidate the refresh token.
+
+```http
+POST /api/v1/auth/logout
+Content-Type: application/json
+
+{
+  "refresh_token": "eyJhbGciOi..."
+}
+```
+
+```http
+// Response: 204 No Content
+```
+
+#### `GET /api/v1/auth/me`
+Retrieve authenticated user profile.
+
+```http
+GET /api/v1/auth/me
+Authorization: Bearer <access_token>
+```
+
+```json
+// Response: 200 OK
+{
+  "user_id": "9b1deb4d-3b7d-4bad-9bdd-2b0d7b3dcb6d",
+  "email": "user@example.com",
+  "history_sync_enabled": false
+}
+```
+
+---
+
+### Crowdsourced Reports Endpoints
+
+#### `POST /api/v1/reports`
+Submit a URL report. Rate limited: 10/hour/IP. Auth is optional.
+
+```http
+POST /api/v1/reports
+Content-Type: application/json
+[Optional] Authorization: Bearer <access_token>
+
+{
+  "url": "https://malicious-login.test/signin",
+  "report_type": "phishing",       // "phishing" | "false_positive" | "malware"
+  "engine_score": 85.0,            // Phase 2/3 score at time of report (0-100)
+  "notes": "Fake credential prompt"
+}
+```
+
+```json
+// Response: 201 Created
+{
+  "id": "e3a89e1a-5b12-4217-9154-1b9fb172089b",
+  "url": "https://malicious-login.test/signin",
+  "domain": "malicious-login.test",
+  "report_type": "phishing",
+  "status": "pending",
+  "engine_score": 85.0,
+  "created_at": "2026-08-21T01:00:00Z"
+}
+```
+
+#### `GET /api/v1/reports`
+List current user's submitted reports. Requires authentication.
+
+```http
+GET /api/v1/reports?limit=50&offset=0
+Authorization: Bearer <access_token>
+```
+
+```json
+// Response: 200 OK
+[
+  {
+    "id": "e3a89e1a-5b12-4217-9154-1b9fb172089b",
+    "url": "https://malicious-login.test/signin",
+    "domain": "malicious-login.test",
+    "report_type": "phishing",
+    "status": "confirmed",
+    "engine_score": 85.0,
+    "created_at": "2026-08-21T01:00:00Z"
+  }
+]
+```
+
+---
+
+### Shared Threat Intelligence Endpoints
+
+#### `GET /api/v1/threat-intel/lookup`
+Look up a domain in the crowdsourced threat intelligence database. Open endpoint (no auth required).
+
+```http
+GET /api/v1/threat-intel/lookup?domain=phish-portal.example
+```
+
+```json
+// Response: 200 OK
+{
+  "domain": "phish-portal.example",
+  "is_threat": true,
+  "report_count": 5,
+  "avg_engine_score": 78.4,
+  "confidence": "medium",            // "low" | "medium" | "high"
+  "label": "Flagged by 5 SafeClick users"
+}
+```
+
+---
+
+### Analytics Endpoints
+
+#### `GET /api/v1/analytics/stats`
+Aggregate operational telemetry (no per-user data or browsing history).
+
+```http
+GET /api/v1/analytics/stats?days=7
+```
+
+```json
+// Response: 200 OK
+{
+  "period_days": 7,
+  "verdicts": {
+    "safe": 1420,
+    "suspicious": 68,
+    "dangerous": 12
+  },
+  "api": {
+    "avg_latency_ms": 24.5,
+    "max_latency_ms": 112.0,
+    "total_events": 1500
+  },
+  "top_reported_domains": [
+    { "domain": "fake-paypal.test", "report_count": 8 }
+  ],
+  "threat_intel_hits": 45
+}
+```
+
+---
+
 ## Versioning Policy
 
 - All HTTP API endpoints are versioned under `/api/v1/`.
 - TypeScript interfaces are extended **additively only** — no fields removed or renamed after they appear in a shipped phase.
 - Breaking changes require bumping the API version prefix and updating this document.
+
 

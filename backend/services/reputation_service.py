@@ -35,6 +35,9 @@ VIRUSTOTAL_BASE_URL = "https://www.virustotal.com/api/v3"
 OPENPHISH_FEED_URL: str = os.getenv(
     "OPENPHISH_FEED_URL", "https://openphish.com/feed.txt"
 )
+URLHAUS_FEED_URL: str = os.getenv(
+    "URLHAUS_FEED_URL", "https://urlhaus.abuse.ch/downloads/hostfile/"
+)
 
 REPUTATION_CACHE_TTL: int = int(os.getenv("REPUTATION_CACHE_TTL", "21600"))  # 6 hours
 REPUTATION_CACHE_MAXSIZE = 10_000
@@ -75,9 +78,11 @@ class ReputationService:
             maxsize=REPUTATION_CACHE_MAXSIZE,
             ttl=REPUTATION_CACHE_TTL,
         )
-        # OpenPhish feed: set of malicious hostnames/domains
+        # OpenPhish & URLhaus feeds: set of malicious hostnames/domains
         self._openphish_domains: set[str] = set()
+        self._urlhaus_domains: set[str] = set()
         self._openphish_loaded = False
+        self._urlhaus_loaded = False
 
         # Redis client (optional)
         self._redis = None
@@ -92,9 +97,11 @@ class ReputationService:
         Startup initialization:
         1. Try to connect to Redis (optional)
         2. Fetch OpenPhish community feed
+        3. Fetch URLhaus active malware feed
         """
         await self._try_connect_redis()
         await self._refresh_openphish_feed()
+        await self._refresh_urlhaus_feed()
 
     # ── Public interface ───────────────────────────────────────────────────────
 
@@ -140,7 +147,18 @@ class ReputationService:
         """Run the full lookup pipeline."""
         now = datetime.now(timezone.utc).isoformat()
 
-        # 1. OpenPhish local cache (instant, no network) ──────────────────────
+        # 1. URLhaus active malware feed (instant local cache) ────────────────
+        if self._urlhaus_loaded and domain in self._urlhaus_domains:
+            return ReputationResult(
+                domain=domain,
+                known_malicious=True,
+                source="urlhaus",
+                last_checked=now,
+                confidence=0.90,
+                detail="Domain found in URLhaus active malware and payload feed.",
+            )
+
+        # 2. OpenPhish local cache (instant, no network) ──────────────────────
         if self._openphish_loaded and domain in self._openphish_domains:
             return ReputationResult(
                 domain=domain,
@@ -151,13 +169,13 @@ class ReputationService:
                 detail="Domain found in OpenPhish community phishing feed.",
             )
 
-        # 2. VirusTotal (if API key configured) ───────────────────────────────
+        # 3. VirusTotal (if API key configured) ───────────────────────────────
         if VIRUSTOTAL_API_KEY:
             vt_result = await self._check_virustotal(domain)
             if vt_result is not None:
                 return vt_result
 
-        # 3. Graceful degradation ─────────────────────────────────────────────
+        # 4. Graceful degradation ─────────────────────────────────────────────
         return ReputationResult(
             domain=domain,
             known_malicious=False,
@@ -292,6 +310,42 @@ class ReputationService:
         except Exception as e:
             print(f"[SafeClick] OpenPhish feed fetch failed: {e}")
             self._openphish_loaded = True
+
+    async def _refresh_urlhaus_feed(self) -> None:
+        """
+        Fetch the URLhaus community malware/payload feed (abuse.ch).
+        Format: hostfile list of active malware domains, e.g. 127.0.0.1 domain.com
+        """
+        try:
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                response = await client.get(URLHAUS_FEED_URL)
+
+            if not response.is_success:
+                print(f"[SafeClick] URLhaus feed returned {response.status_code}")
+                self._urlhaus_loaded = True
+                return
+
+            domains: set[str] = set()
+            for line in response.text.splitlines():
+                line = line.strip()
+                if not line or line.startswith("#"):
+                    continue
+                parts = line.split()
+                if len(parts) >= 2 and parts[0] in ("127.0.0.1", "0.0.0.0"):
+                    domain = parts[1].lower().strip()
+                    if domain and domain != "localhost":
+                        domains.add(domain)
+
+            self._urlhaus_domains = domains
+            self._urlhaus_loaded = True
+            print(f"[SafeClick] URLhaus malware feed loaded: {len(domains)} malicious domains cached.")
+
+        except (httpx.TimeoutException, httpx.ConnectError) as e:
+            print(f"[SafeClick] URLhaus feed fetch failed (network): {e}")
+            self._urlhaus_loaded = True
+        except Exception as e:
+            print(f"[SafeClick] URLhaus feed fetch failed: {e}")
+            self._urlhaus_loaded = True
 
     def _extract_registered_domain(self, hostname: str) -> Optional[str]:
         """Simple eTLD+1 extraction for OpenPhish feed processing."""

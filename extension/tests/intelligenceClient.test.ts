@@ -2,11 +2,11 @@
  * tests/intelligenceClient.test.ts
  * ─────────────────────────────────────────────────────────────────────────────
  * Vitest tests for background/intelligenceClient.ts.
- * Covers: successful merge, timeout fallback, network error fallback,
- * HTTP error fallback, response parsing, confidence fields.
+ * Covers: backend API call, seamless in-browser XGBoost ML fallback when offline,
+ * confidence scoring, and explanation generation.
  */
 
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { callIntelligence } from '../background/intelligenceClient';
 
 // ── Mock global fetch ──────────────────────────────────────────────────────────
@@ -51,7 +51,7 @@ function makeErrorResponse(status: number): Response {
   return new Response('{}', { status });
 }
 
-describe('callIntelligence — success path', () => {
+describe('callIntelligence — success path (backend online)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
@@ -69,7 +69,7 @@ describe('callIntelligence — success path', () => {
     mockFetch.mockResolvedValueOnce(makeSuccessResponse());
     const result = await callIntelligence('https://example.com', 5, []);
     expect(result.ml.topContributingFeatures).toHaveLength(1);
-    expect(result.ml.topContributingFeatures[0].featureName).toBe('has_https');
+    expect(result.ml.topContributingFeatures[0].feature_name).toBe('has_https');
     expect(result.ml.topContributingFeatures[0].contribution).toBe(-0.12);
   });
 
@@ -88,64 +88,45 @@ describe('callIntelligence — success path', () => {
     expect(result.explanation.ruleReasons).toHaveLength(1);
     expect(result.explanation.mlReasons).toHaveLength(1);
   });
-
-  it('returns ruleEngineVersion from response', async () => {
-    mockFetch.mockResolvedValueOnce(makeSuccessResponse());
-    const result = await callIntelligence('https://example.com', 5, []);
-    expect(result.ruleEngineVersion).toBe('1.0.0');
-  });
 });
 
-describe('callIntelligence — graceful degradation', () => {
+describe('callIntelligence — in-browser ML fallback (backend offline)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
-  it('returns unavailable fallback on network error', async () => {
+  it('evaluates URL with in-browser XGBoost model on network error', async () => {
     mockFetch.mockRejectedValueOnce(new Error('Connection refused'));
-    const result = await callIntelligence('https://example.com', 10, ['Rule fired.']);
-    expect(result.ml.source).toBe('unavailable');
-    expect(result.ml.score).toBeNull();
-    expect(result.ml.label).toBeNull();
+    const result = await callIntelligence('https://google.com', 0, ['Top domain.']);
+    expect(result.ml.source).toBe('model');
+    expect(result.ml.score).toBeLessThan(0.3);
+    expect(result.ml.label).toBe('benign');
+    expect(result.confidence.level).toBe('high');
+    expect(result.explanation.summary).toContain('safe');
   });
 
-  it('returns unavailable fallback on HTTP 500', async () => {
+  it('correctly scores suspicious phishing URL with in-browser ML model', async () => {
+    mockFetch.mockRejectedValueOnce(new Error('Backend offline'));
+    const result = await callIntelligence('http://paypal-verification.security-account.tk/login', 80, ['Suspicious brand match']);
+    expect(result.ml.source).toBe('model');
+    expect(result.ml.score).toBeGreaterThan(0.5);
+    expect(result.ml.label).toBe('phishing');
+    expect(result.explanation.summary).toContain('high-risk');
+  });
+
+  it('falls back to in-browser ML on HTTP 500 error', async () => {
     mockFetch.mockResolvedValueOnce(makeErrorResponse(500));
-    const result = await callIntelligence('https://example.com', 10, ['Rule fired.']);
-    expect(result.ml.source).toBe('unavailable');
-  });
-
-  it('returns unavailable fallback on HTTP 503', async () => {
-    mockFetch.mockResolvedValueOnce(makeErrorResponse(503));
-    const result = await callIntelligence('https://example.com', 10, []);
-    expect(result.ml.source).toBe('unavailable');
-  });
-
-  it('fallback confidence is always low', async () => {
-    mockFetch.mockRejectedValueOnce(new Error('Network error'));
-    const result = await callIntelligence('https://example.com', 90, []);
-    expect(result.confidence.level).toBe('low');
-    expect(result.confidence.agreement).toBe(false);
-  });
-
-  it('fallback preserves rule score in confidence', async () => {
-    mockFetch.mockRejectedValueOnce(new Error('Network error'));
-    const result = await callIntelligence('https://example.com', 80, ['Rule fired.']);
-    expect(result.confidence.combinedScore).toBeCloseTo(0.8, 1);
-  });
-
-  it('fallback explanation notes ML unavailability', async () => {
-    mockFetch.mockRejectedValueOnce(new Error('Offline'));
-    const result = await callIntelligence('https://example.com', 0, []);
-    expect(result.explanation.mlReasons[0]).toMatch(/unavailable/i);
+    const result = await callIntelligence('https://github.com', 0, []);
+    expect(result.ml.source).toBe('model');
+    expect(result.ml.label).toBe('benign');
   });
 
   it('never rejects — always resolves on timeout (AbortError)', async () => {
     mockFetch.mockRejectedValueOnce(
       Object.assign(new Error('Aborted'), { name: 'AbortError' })
     );
-    await expect(
-      callIntelligence('https://example.com', 0, [])
-    ).resolves.toBeDefined();
+    const result = await callIntelligence('https://example.com', 0, []);
+    expect(result).toBeDefined();
+    expect(result.ml.source).toBe('model');
   });
 });

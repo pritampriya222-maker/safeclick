@@ -1,71 +1,77 @@
 /**
  * content/contentScript.ts
  * ─────────────────────────────────────────────────────────────────────────────
- * Minimal Phase 1 content script.
- *
- * Responsibilities (Phase 1 ONLY — no blocking, no warnings):
- * 1. Detect whether the page contains a login form (password input field).
- * 2. Capture page metadata (charset, title).
- * 3. Send these as structured PageSignals to the background worker.
- *
- * Phase 2 consumes loginFormSignal to weight the phishing risk score.
- * Phase 4 injects cursorIndicator.ts alongside this script.
- *
- * CRITICAL: This script must NEVER block navigation or display UI elements.
- * Read-only observation only, in Phase 1.
+ * SafeClick Content Script:
+ * 1. Captures page signals (login forms, metadata) for intelligence scoring.
+ * 2. Manages the top-right ambient safety dot (CursorIndicator).
+ * 3. Real-time link hover safety inspection on all page hyperlinks.
  */
 
 import { sendMessage, onMessage } from '../shared/messaging';
-import type { PageSignals, PageSignalsMessage, VerdictUpdateMessage } from '../shared/types';
+import type {
+  PageSignals,
+  PageSignalsMessage,
+  VerdictUpdateMessage,
+  Verdict,
+} from '../shared/types';
 import { CursorIndicator } from './cursorIndicator';
 
-// Initialize ambient cursor indicator
+// Initialize ambient cursor indicator & link safety inspector
 const indicator = new CursorIndicator();
 
-// Listen for VERDICT_UPDATE messages broadcast by tabTracker
-onMessage((message) => {
-  if (message.type === 'VERDICT_UPDATE') {
-    const verdictMsg = message as VerdictUpdateMessage;
-    if (verdictMsg.verdict) {
-      indicator.update(verdictMsg.verdict);
-    }
+// Listen for VERDICT_UPDATE messages sent directly to this tab
+onMessage<VerdictUpdateMessage>('VERDICT_UPDATE', (message) => {
+  if (message.verdict) {
+    indicator.update(message.verdict);
   }
-  return false;
+  return { success: true };
 });
 
-// ─── Capture signals ──────────────────────────────────────────────────────────
+// ─── Initial Page Analysis & Signal Capture ───────────────────────────────────
+
+async function initPageCheck(): Promise<void> {
+  // 1. Immediately request the page verdict to display the ambient dot
+  try {
+    const res = await sendMessage<Verdict>({
+      type: 'GET_VERDICT',
+      url: window.location.href,
+    });
+    if (res.success && res.data) {
+      indicator.update(res.data);
+    }
+  } catch (err) {
+    console.debug('[SafeClick] Initial verdict fetch error:', err);
+  }
+
+  // 2. Capture and send page signals (e.g. login form detection)
+  await captureAndSendSignals();
+}
 
 async function captureAndSendSignals(): Promise<void> {
-  const signals = capturePageSignals();
-
-  const message: PageSignalsMessage = {
-    type: 'PAGE_SIGNALS',
-    signals,
-  };
-
-  const response = await sendMessage(message);
-
-  if (!response.success) {
-    console.debug('[SafeClick] Failed to send page signals:', response.error);
+  try {
+    const signals = capturePageSignals();
+    const message: PageSignalsMessage = {
+      type: 'PAGE_SIGNALS',
+      signals,
+    };
+    await sendMessage(message);
+  } catch (err) {
+    console.debug('[SafeClick] Failed to send page signals:', err);
   }
 }
 
 function capturePageSignals(): PageSignals {
-  const tabId = -1; // Content scripts don't know their own tabId — background resolves via sender.tab.id.
+  const tabId = -1; // Background will assign sender.tab.id
 
-  // Detect login form: any <form> containing an <input type="password">
   const hasLoginForm = detectLoginForm();
-
-  // Page metadata
   const charset =
     document.characterSet ||
     document.querySelector('meta[charset]')?.getAttribute('charset') ||
     null;
-
   const title = document.title || null;
 
   return {
-    tabId, // Background will override this with sender.tab.id
+    tabId,
     hasLoginForm,
     charset,
     title,
@@ -73,23 +79,49 @@ function capturePageSignals(): PageSignals {
   };
 }
 
-/**
- * Detect whether the page has a login form.
- */
 function detectLoginForm(): boolean {
-  const formsWithPassword = document.querySelectorAll(
-    'form input[type="password"]'
-  );
+  const formsWithPassword = document.querySelectorAll('form input[type="password"]');
   if (formsWithPassword.length > 0) return true;
 
   const allPasswordInputs = document.querySelectorAll('input[type="password"]');
   return allPasswordInputs.length > 0;
 }
 
-// ─── Main execution ───────────────────────────────────────────────────────────
+// ─── Real-time Link Hover Inspector ───────────────────────────────────────────
+
+function findAnchor(target: EventTarget | null): HTMLAnchorElement | null {
+  if (!target || !(target instanceof Element)) return null;
+  const anchor = target.closest('a');
+  if (anchor && anchor.href && (anchor.href.startsWith('http://') || anchor.href.startsWith('https://'))) {
+    return anchor;
+  }
+  return null;
+}
+
+document.addEventListener('mouseover', (e: MouseEvent) => {
+  const anchor = findAnchor(e.target);
+  if (anchor && anchor.href) {
+    indicator.inspectLink(anchor.href, e.clientX, e.clientY);
+  }
+}, { passive: true });
+
+document.addEventListener('mousemove', (e: MouseEvent) => {
+  indicator.updateLinkPosition(e.clientX, e.clientY);
+}, { passive: true });
+
+document.addEventListener('mouseout', (e: MouseEvent) => {
+  const anchor = findAnchor(e.target);
+  const relatedAnchor = findAnchor(e.relatedTarget);
+  // If moving out of the anchor element entirely
+  if (anchor && (!relatedAnchor || relatedAnchor !== anchor)) {
+    indicator.clearLinkInspection();
+  }
+}, { passive: true });
+
+// ─── Startup ──────────────────────────────────────────────────────────────────
 
 if (document.readyState === 'loading') {
-  document.addEventListener('DOMContentLoaded', captureAndSendSignals);
+  document.addEventListener('DOMContentLoaded', initPageCheck, { once: true });
 } else {
-  captureAndSendSignals();
+  initPageCheck();
 }

@@ -13,11 +13,13 @@
  */
 
 import { initTabTracker, getTabVerdict, handlePageSignals } from './tabTracker';
+import { getVerdict } from './verdictEngine';
 import { initializeStorage, getSettings, setSettings, addToAllowlist, addToDenylist } from '../shared/storage';
 import { onAnyMessage } from '../shared/messaging';
 import type {
   ExtensionMessage,
   GetVerdictMessage,
+  CheckLinkMessage,
   PageSignalsMessage,
   ReportSiteMessage,
   TrustDomainMessage,
@@ -32,6 +34,12 @@ chrome.runtime.onInstalled.addListener(async ({ reason }) => {
   console.log(`[SafeClick] Extension installed/updated. Reason: ${reason}`);
   await initializeStorage();
   initTabTracker();
+
+  chrome.contextMenus.create({
+    id: 'safeclick-scan-link',
+    title: 'Scan with SafeClick',
+    contexts: ['link']
+  });
 });
 
 chrome.runtime.onStartup.addListener(() => {
@@ -42,13 +50,43 @@ chrome.runtime.onStartup.addListener(() => {
 // Ensure tab tracker is active even when the worker restarts mid-session.
 initTabTracker();
 
+chrome.contextMenus.onClicked.addListener(async (info, tab) => {
+  if (info.menuItemId === 'safeclick-scan-link' && info.linkUrl) {
+    const verdict = await getVerdict(info.linkUrl);
+    
+    let emoji = '🟢';
+    if (verdict.level === 'suspicious') emoji = '🟡';
+    if (verdict.level === 'dangerous') emoji = '🔴';
+    
+    const message = `Risk Level: ${verdict.level.toUpperCase()} (Score: ${Math.round(verdict.score)})\n${verdict.reasons[0] || 'No specific threats detected.'}`;
+    
+    chrome.notifications.create({
+      type: 'basic',
+      iconUrl: 'icons/icon128.png',
+      title: `${emoji} SafeClick Scan`,
+      message: message
+    });
+  }
+});
+
 // ─── Message Router ───────────────────────────────────────────────────────────
 
 onAnyMessage(async (message: ExtensionMessage, sender): Promise<MessageResponse | undefined> => {
   switch (message.type) {
     case 'GET_VERDICT': {
       const msg = message as GetVerdictMessage;
-      const verdict = await getTabVerdict(msg.tabId);
+      const tabId = msg.tabId ?? sender.tab?.id;
+      let verdict = tabId !== undefined ? await getTabVerdict(tabId) : null;
+      if (!verdict && msg.url) {
+        verdict = await getVerdict(msg.url);
+      }
+      return { success: true, data: verdict };
+    }
+
+    case 'CHECK_LINK': {
+      const msg = message as CheckLinkMessage;
+      if (!msg.url) return { success: false, error: 'Missing link URL' };
+      const verdict = await getVerdict(msg.url);
       return { success: true, data: verdict };
     }
 
